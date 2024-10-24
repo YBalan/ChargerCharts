@@ -57,8 +57,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        setContentView(R.layout.activity_main)
-
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             //ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), REQUEST_READ_EXTERNAL_STORAGE)
             if (shouldShowRequestPermissionRationale(Manifest.permission.READ_EXTERNAL_STORAGE)) {
@@ -75,6 +73,18 @@ class MainActivity : ComponentActivity() {
         }
 
         //pickUpCsv()
+    }
+
+    @Deprecated("")
+    override fun onBackPressed() {
+        // Custom logic before calling super
+        // For example, showing a confirmation dialog
+        if (true) {
+            pickUpCsv()
+        } else {
+            // Exit the activity
+            super.onBackPressed()
+        }
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -126,12 +136,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun pickUpCsv() {
-        lineChart = findViewById(R.id.lineChart)
         // Register the file picker to open a CSV file
         val pickCsvFile = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             uri?.let {
                 val parsedData = parseCsvFile(this, uri)
-                plotData(lineChart, parsedData)
+                if(parsedData.values.isNotEmpty()) {
+                    setContentView(R.layout.activity_main)
+                    lineChart = findViewById(R.id.lineChart)
+                    if (!plotData(lineChart, parsedData)) {
+                        Toast.makeText(this, "No data available", Toast.LENGTH_SHORT).show()
+                    }
+                }else
+                    Toast.makeText(this, "No data available", Toast.LENGTH_SHORT).show()
             } ?: Toast.makeText(this, "No file selected", Toast.LENGTH_SHORT).show()
         }
 
@@ -210,10 +226,11 @@ class MainActivity : ComponentActivity() {
         if (condition) trueValue else falseValue
     }
 
-    private fun plotData(chart: LineChart, data: CsvData) {
+    private fun plotData(chart: LineChart, data: CsvData) : Boolean {
         /*val voltage = data.mapIndexed { index, csvData ->
             Entry(index.toFloat(), csvData.voltage)  // Plot based on Voltage
         }*/
+        if(data.values.isEmpty()) return false
 
         val voltage = data.values.map { csvData ->
             Entry(csvData.dateTime.toEpochMillis().toFloat(), csvData.voltage) // X = epoch millis, Y = voltage
@@ -232,8 +249,8 @@ class MainActivity : ComponentActivity() {
         dataSetVoltage.setCircleColor(Color.BLUE)
 
         val dataSetRelay = LineDataSet(relay, "Relay")
-        dataSetRelay.color = Color.BLACK
-        dataSetRelay.setCircleColor(Color.BLACK)
+        dataSetRelay.color = Color.GRAY
+        dataSetRelay.setCircleColor(Color.GRAY)
 
         val xAxis = lineChart.xAxis
         xAxis.position = XAxis.XAxisPosition.BOTTOM
@@ -248,14 +265,24 @@ class MainActivity : ComponentActivity() {
                 return dateTimeFormatter.format(dateTime)
             }
         }
-        xAxis.granularity = 86400000f // 1 day in milliseconds
+        val desiredLabelsCount = 10;
+        var granularity =
+            ((data.values.last().dateTime.toEpochMillis() - data.values.first().dateTime.toEpochMillis()) / desiredLabelsCount).toFloat()
+
+        xAxis.granularity = granularity // in milliseconds
+        xAxis.isGranularityEnabled = granularity > 0f
         xAxis.labelRotationAngle = -45f // Rotate labels for better visibility
+
+        chart.viewPortHandler.setMaximumScaleX(5f) // Allow max zoom level of 5x
+        chart.viewPortHandler.setMinimumScaleX(1f) // Allow minimum zoom level of 1x
 
         val lineData = LineData(dataSetVoltage, dataSetRelay)
 
         chart.data = lineData
         chart.description.isEnabled = false
         chart.invalidate() // Refresh the chart
+
+        return true
     }
 }
 
