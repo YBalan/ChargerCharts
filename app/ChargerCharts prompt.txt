@@ -1,0 +1,18 @@
+Android application should parse csv file and draw the chart:
+use Kotlin DSL
+
+csv format:
+DateTime,Voltage,Relay
+2024-10-13 16:10:22,12.4,0
+2024-10-13 16:11:22,12.5,1
+
+1. at the first run app should ask for storage permission
+2. in case of access show filePicker view for csv files
+3. parse csv in parallel thread and show preloader
+4. draw chart according to parsed data
+	1. chart should contain file name at the top allign: center
+	2. chart with tooltips DT: datetime\nVal: value; datetime in yyyy-MM-dd HH:mm format
+	3. xAxis should show date time in yyyy-MM-dd HH:mm format
+	4. check boxes for Voltage and Relay data sets
+5. In case of back button return to filePicker view
+	

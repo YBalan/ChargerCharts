@@ -19,15 +19,12 @@ import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.MarkerView
 import com.github.mikephil.charting.highlight.Highlight
-import com.github.mikephil.charting.components.YAxis
-import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.opencsv.CSVReader
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import android.content.pm.PackageManager
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.graphics.Color
 import android.Manifest
@@ -46,15 +43,16 @@ import androidx.activity.OnBackPressedCallback
 import android.util.Log
 import java.util.Locale
 
-private val REQUEST_READ_EXTERNAL_STORAGE = 100
-private val FILE_PICKER_REQUEST_CODE = 1
+//private const val REQUEST_READ_EXTERNAL_STORAGE = 100
+//private const val FILE_PICKER_REQUEST_CODE = 1
 
 data class CsvData(
     var maxV: Float,
     var minV: Float,
     val values: List<CsvDataValues>,
-    val dateTimeChartFormat: String = "yyyy-MM-dd HH:mm",
+    val dateTimeChartFormat: String = "MM-dd-yy HH:mm",
     val dateTimeCsvFormat: String = "uuuu-MM-dd HH:mm:ss",
+    val dateTimeToolTipFormat: String = "HH:mm:ss MM-dd-yy",
     var voltageLabel: String = "Voltage",
     var voltageVisible: Boolean = true,
     var relayLabel: String = "Relay",
@@ -74,8 +72,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var checkboxVoltage: CheckBox
     private lateinit var checkboxRelay: CheckBox
 
-    private lateinit var backPressedCallback: OnBackPressedCallback
-
     override fun onStart() {
         super.onStart()
         // Add an OnBackPressedCallback to intercept the back button press
@@ -86,7 +82,7 @@ class MainActivity : ComponentActivity() {
                     pickUpCsv() // Open the file picker when the back button is pressed
                 }
                 catch (e: Exception){
-                    e.printStackTrace();
+                    e.printStackTrace()
                 }
             }
         })
@@ -136,21 +132,6 @@ class MainActivity : ComponentActivity() {
         requestPermissionLauncher.launch(
             Manifest.permission.READ_EXTERNAL_STORAGE
         )
-    }
-
-    private fun filePickerCheck(){
-        val pickCsvFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                // File is selected, process the URI
-                Toast.makeText(this, "File Selected: $uri", Toast.LENGTH_SHORT).show()
-                // You can now read the file using contentResolver
-            } else {
-                Toast.makeText(this, "Picker Check: No file selected", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        // Launch the file picker with the correct MIME type for CSV files
-        pickCsvFile.launch(arrayOf("*/*"))
     }
 
     private fun pickUpCsv() {
@@ -284,13 +265,13 @@ class MainActivity : ComponentActivity() {
     private fun readHeader(value: String) : String?{
         var result: String? = null
         try{
-            if (value.isEmpty()) return result
-            value.toFloat();
+            if (value.isEmpty()) return null
+            value.toFloat()
         }
-        catch (e: NumberFormatException){
-            result = value;
+        catch (_: NumberFormatException){
+            result = value
         }
-        return result;
+        return result
     }
 
     // Convert LocalDateTime to epoch milliseconds
@@ -339,7 +320,7 @@ class MainActivity : ComponentActivity() {
                 return dateTimeFormatter.format(dateTime)
             }
         }
-        val desiredLabelsCount = 48;
+        val desiredLabelsCount = 48
         var granularity =
             ((data.values.last().dateTime.toEpochMillis() - data.values.first().dateTime.toEpochMillis()) / desiredLabelsCount).toFloat()
 
@@ -367,13 +348,12 @@ class MainActivity : ComponentActivity() {
     private class CustomMarkerView(context: Context, layoutResource: Int) : MarkerView(context, layoutResource) {
         private val tvContent: TextView = findViewById(R.id.tvContent)
         val data = CsvData(0f, 0f, emptyList())
-        private val dateTimeFormatter = DateTimeFormatter.ofPattern(data.dateTimeCsvFormat)
+        private val dateTimeFormatter = DateTimeFormatter.ofPattern(data.dateTimeToolTipFormat)
 
         override fun refreshContent(e: Entry, highlight: Highlight?) {
             tvContent.text =
-                String.format(Locale.getDefault(), "DT: %s\n%s: %.2f",
+                String.format(Locale.getDefault(), "DT: %s\nVal: %.1f",
                     dateTimeFormatter.format(LocalDateTime.ofEpochSecond(e.x.toLong() / 1000, 0, ZoneOffset.UTC)),
-                    "Val",
                     e.y
                 ) // Customize the content displayed in the tooltip
             super.refreshContent(e, highlight)
