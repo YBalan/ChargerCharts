@@ -36,12 +36,54 @@ import java.time.format.*
 import java.time.format.DateTimeParseException
 import com.github.mikephil.charting.formatter.ValueFormatter
 import java.time.ZoneOffset
+import android.widget.CheckBox
+import android.widget.TextView
+import android.database.Cursor
+import android.provider.OpenableColumns
+import androidx.activity.OnBackPressedCallback
 
 private val REQUEST_READ_EXTERNAL_STORAGE = 100
+
+data class CsvData(
+    var maxV: Float,
+    var minV: Float,
+    val values: List<CsvDataValues>,
+    val dateTimeChartFormat: String = "yyyy-MM-dd HH:mm",
+    val dateTimeCsvFormat: String = "uuuu-MM-dd HH:mm:ss",
+    var voltageLabel: String = "Voltage",
+    var voltageVisible: Boolean = true,
+    var relayLabel: String = "Relay",
+    var relayVisible: Boolean = true,
+)
+
+data class CsvDataValues(
+    val dateTime: LocalDateTime,
+    val voltage: Float,
+    val relay: Float,
+)
 
 class MainActivity : ComponentActivity() {
 
     private lateinit var lineChart: LineChart
+    private lateinit var fileNameLabel: TextView
+    private lateinit var checkboxVoltage: CheckBox
+    private lateinit var checkboxRelay: CheckBox
+
+    override fun onStart(){
+        super.onStart()
+        // Add an OnBackPressedCallback to intercept the back button press
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                Toast.makeText(this@MainActivity, "Back to File Picker", Toast.LENGTH_SHORT).show()
+                try {
+                    pickUpCsv() // Open the file picker when the back button is pressed
+                }
+                catch (e: Exception){
+                    e.printStackTrace();
+                }
+            }
+        })
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,18 +115,6 @@ class MainActivity : ComponentActivity() {
         }
 
         //pickUpCsv()
-    }
-
-    @Deprecated("")
-    override fun onBackPressed() {
-        // Custom logic before calling super
-        // For example, showing a confirmation dialog
-        if (true) {
-            pickUpCsv()
-        } else {
-            // Exit the activity
-            super.onBackPressed()
-        }
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -143,6 +173,25 @@ class MainActivity : ComponentActivity() {
                 if(parsedData.values.isNotEmpty()) {
                     setContentView(R.layout.activity_main)
                     lineChart = findViewById(R.id.lineChart)
+                    fileNameLabel = findViewById(R.id.fileNameLabel)
+                    checkboxVoltage = findViewById(R.id.checkboxVoltage)
+                    checkboxRelay = findViewById(R.id.checkboxRelay)
+                    checkboxVoltage.isChecked = parsedData.voltageVisible
+                    checkboxRelay.isChecked = parsedData.relayVisible
+                    checkboxVoltage.text = parsedData.voltageLabel
+                    checkboxRelay.text = parsedData.relayLabel
+
+                    fileNameLabel.text = getFileNameFromUri(this, uri)
+
+                    // Set up CheckBox listeners to toggle chart visibility
+                    checkboxVoltage.setOnCheckedChangeListener { _, isChecked ->
+                        toggleDataSetVisibility(parsedData.voltageLabel, isChecked)
+                    }
+
+                    checkboxRelay.setOnCheckedChangeListener { _, isChecked ->
+                        toggleDataSetVisibility(parsedData.relayLabel, isChecked)
+                    }
+
                     if (!plotData(lineChart, parsedData)) {
                         Toast.makeText(this, "No data available", Toast.LENGTH_SHORT).show()
                     }
@@ -155,23 +204,55 @@ class MainActivity : ComponentActivity() {
         pickCsvFile.launch("*/*")
     }
 
+    private fun toggleDataSetVisibility(label: String, isVisible: Boolean) {
+        // Find the dataset by label and set its visibility
+        val dataSet = lineChart.data?.getDataSetByLabel(label, true)
+        dataSet?.isVisible = isVisible
+        lineChart.invalidate() // Refresh chart to apply changes
+    }
+
+    fun getFileNameFromUri(context: Context, uri: Uri): String? {
+        var fileName: String? = null
+        if (uri.scheme == "content") {
+            val cursor: Cursor? = context.contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                val nameIndex = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIndex != -1 && it.moveToFirst()) {
+                    fileName = it.getString(nameIndex)
+                }
+            }
+        } else if (uri.scheme == "file") {
+            fileName = uri.lastPathSegment
+        }
+        return fileName
+    }
+
     private fun parseCsvFile(context: Context, uri: Uri): CsvData {
         val resultList = mutableListOf<CsvDataValues>()
         val result = CsvData(0.0f, 0.0f, resultList)
 
-        // Open input stream from the content resolver
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return result
+        val rows = try {
+            // Open input stream from the content resolver
+            val inputStream = context.contentResolver.openInputStream(uri) ?: return result
 
-        // Read CSV using OpenCSV
-        val reader = BufferedReader(InputStreamReader(inputStream))
-        val csvReader = CSVReader(reader)
-        val rows = csvReader.readAll()
+            // Read CSV using OpenCSV
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            val csvReader = CSVReader(reader)
+            csvReader.readAll()
+        }catch (e: FileSystemException){
+            e.printStackTrace()
+            return result
+        }
 
         // Skip the header (first row)
         val header = rows.firstOrNull() ?: return result
+        if(header.count() >= 3){
+            result.voltageLabel = readHeader(header[1]) ?: result.voltageLabel
+            result.relayLabel = readHeader(header[2]) ?: result.relayLabel
+        }
 
         // Set the expected DateTime format
-        val dateTimeFormatter = DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm:ss")
+        val dateTimeFormatter = DateTimeFormatter.ofPattern(result.dateTimeCsvFormat)
             .withResolverStyle(ResolverStyle.STRICT)
 
         // Iterate over the CSV rows, starting from the second row
@@ -205,17 +286,17 @@ class MainActivity : ComponentActivity() {
         return result
     }
 
-    data class CsvData(
-        var maxV: Float,
-        var minV: Float,
-        val values: List<CsvDataValues>
-    )
-
-    data class CsvDataValues(
-        val dateTime: LocalDateTime,
-        val voltage: Float,
-        val relay: Float,
-    )
+    private fun readHeader(value: String) : String?{
+        var result: String? = null
+        try{
+            if (value.isEmpty()) return result
+            value.toFloat();
+        }
+        catch (e: NumberFormatException){
+            result = value;
+        }
+        return result;
+    }
 
     // Convert LocalDateTime to epoch milliseconds
     private fun LocalDateTime.toEpochMillis(): Long {
@@ -227,28 +308,26 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun plotData(chart: LineChart, data: CsvData) : Boolean {
-        /*val voltage = data.mapIndexed { index, csvData ->
-            Entry(index.toFloat(), csvData.voltage)  // Plot based on Voltage
-        }*/
         if(data.values.isEmpty()) return false
 
         val voltage = data.values.map { csvData ->
             Entry(csvData.dateTime.toEpochMillis().toFloat(), csvData.voltage) // X = epoch millis, Y = voltage
         }
 
-        /*val relay = data.mapIndexed { index, csvData ->
-            Entry(index.toFloat(), csvData.relay)  // Plot based on Relay
-        }*/
-
+        val relayOffset = 0.1f
         val relay = data.values.map { csvData ->
-            Entry(csvData.dateTime.toEpochMillis().toFloat(), chooseValue(csvData.relay > 0.0f, data.maxV, data.minV)) // X = epoch millis, Y = relay
+            Entry(csvData.dateTime.toEpochMillis().toFloat(),
+                chooseValue(csvData.relay > 0.0f, data.maxV + relayOffset,
+                    chooseValue(data.minV - relayOffset > 0f, data.minV - relayOffset, 0f))) // X = epoch millis, Y = relay
         }
 
-        val dataSetVoltage = LineDataSet(voltage, "Voltage")
+        val dataSetVoltage = LineDataSet(voltage, data.voltageLabel)
+        dataSetVoltage.isVisible = data.voltageVisible
         dataSetVoltage.color = Color.BLUE
         dataSetVoltage.setCircleColor(Color.BLUE)
 
-        val dataSetRelay = LineDataSet(relay, "Relay")
+        val dataSetRelay = LineDataSet(relay, data.relayLabel)
+        dataSetRelay.isVisible = data.relayVisible
         dataSetRelay.color = Color.GRAY
         dataSetRelay.setCircleColor(Color.GRAY)
 
@@ -256,7 +335,7 @@ class MainActivity : ComponentActivity() {
         xAxis.position = XAxis.XAxisPosition.BOTTOM
         //xAxis.valueFormatter = IndexAxisValueFormatter(xValues)
         xAxis.valueFormatter = object : ValueFormatter() {
-            private val dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+            private val dateTimeFormatter = DateTimeFormatter.ofPattern(data.dateTimeChartFormat)
 
             override fun getFormattedValue(value: Float): String {
                 // Convert float (epoch millis) back to LocalDateTime and format it
@@ -265,7 +344,7 @@ class MainActivity : ComponentActivity() {
                 return dateTimeFormatter.format(dateTime)
             }
         }
-        val desiredLabelsCount = 10;
+        val desiredLabelsCount = 48;
         var granularity =
             ((data.values.last().dateTime.toEpochMillis() - data.values.first().dateTime.toEpochMillis()) / desiredLabelsCount).toFloat()
 

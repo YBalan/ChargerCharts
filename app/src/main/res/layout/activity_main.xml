@@ -3,8 +3,49 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <!-- File Name Label at the Top Center -->
+    <TextView
+        android:id="@+id/fileNameLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:text="File Name"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:padding="16dp" />
+
+    <!-- Line Chart in the Center -->
     <com.github.mikephil.charting.charts.LineChart
         android:id="@+id/lineChart"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_below="@id/fileNameLabel"
+        android:layout_above="@id/checkboxLayout" />
+
+    <!-- Checkbox Layout at the Bottom -->
+    <LinearLayout
+        android:id="@+id/checkboxLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="16dp">
+
+        <CheckBox
+            android:id="@+id/checkboxVoltage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Voltage" />
+
+        <CheckBox
+            android:id="@+id/checkboxRelay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Relay"
+            android:layout_marginStart="24dp" />
+
+    </LinearLayout>
+
 </RelativeLayout>
