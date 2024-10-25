@@ -17,6 +17,8 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.components.MarkerView
+import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.opencsv.CSVReader
@@ -41,8 +43,11 @@ import android.widget.TextView
 import android.database.Cursor
 import android.provider.OpenableColumns
 import androidx.activity.OnBackPressedCallback
+import android.util.Log
+import java.util.Locale
 
 private val REQUEST_READ_EXTERNAL_STORAGE = 100
+private val FILE_PICKER_REQUEST_CODE = 1
 
 data class CsvData(
     var maxV: Float,
@@ -69,7 +74,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var checkboxVoltage: CheckBox
     private lateinit var checkboxRelay: CheckBox
 
-    override fun onStart(){
+    private lateinit var backPressedCallback: OnBackPressedCallback
+
+    override fun onStart() {
         super.onStart()
         // Add an OnBackPressedCallback to intercept the back button press
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -102,19 +109,14 @@ class MainActivity : ComponentActivity() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             //ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE), REQUEST_READ_EXTERNAL_STORAGE)
             if (shouldShowRequestPermissionRationale(Manifest.permission.READ_EXTERNAL_STORAGE)) {
-                // Show a rationale to the user
-            } else {
                 // Request the permission
                 requestPermission()
+            } else {
                 pickUpCsv()
-                //filePickerCheck()
             }
         } else{
-            //pickCsvFileAndBuildChart()
             pickUpCsv()
         }
-
-        //pickUpCsv()
     }
 
     private val requestPermissionLauncher = registerForActivityResult(
@@ -126,7 +128,7 @@ class MainActivity : ComponentActivity() {
             //filePickerCheck()
         } else {
             // Permission denied
-            //Toast.makeText(this, "Permission denied!!!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permission denied!!!", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -134,20 +136,6 @@ class MainActivity : ComponentActivity() {
         requestPermissionLauncher.launch(
             Manifest.permission.READ_EXTERNAL_STORAGE
         )
-    }
-
-    @Deprecated("")
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_READ_EXTERNAL_STORAGE) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                //pickCsvFileAndBuildChart()
-                pickUpCsv()
-
-            } else {
-                Toast.makeText(this, "Permission denied", Toast.LENGTH_SHORT).show()
-            }
-        }
     }
 
     private fun filePickerCheck(){
@@ -255,13 +243,18 @@ class MainActivity : ComponentActivity() {
         val dateTimeFormatter = DateTimeFormatter.ofPattern(result.dateTimeCsvFormat)
             .withResolverStyle(ResolverStyle.STRICT)
 
+        var rowIndex = 1
         // Iterate over the CSV rows, starting from the second row
-        for (row in rows.drop(1)) {
+        for (row in rows.drop(rowIndex)) {
             // Parse DateTime from the first column
-            val dateTimeString = row[0].trim()
+            var dateTimeString = row[0].trim()
+            val firstDigitIdx = dateTimeString.indexOfFirst { c -> c.isDigit() }
+            if(firstDigitIdx >= 0)
+                dateTimeString = dateTimeString.substring(firstDigitIdx)
             try {
                 val dateTime = try { LocalDateTime.parse(dateTimeString, dateTimeFormatter)
                 }catch (e: DateTimeParseException) {
+                    Log.e("MainActivity", "RowIndex: $rowIndex text: '$dateTimeString'")
                     e.printStackTrace()
                     continue
                 }
@@ -277,10 +270,12 @@ class MainActivity : ComponentActivity() {
                 resultList.add(CsvDataValues(dateTime, voltage, relay))
             }
             catch (e: NumberFormatException) {
+                Log.e("MainActivity", "RowIndex: $rowIndex text: '$dateTimeString'")
                 // Handle parsing errors for value1 or value2
                 e.printStackTrace()
                 continue
             }
+            rowIndex++
         }
 
         return result
@@ -359,9 +354,30 @@ class MainActivity : ComponentActivity() {
 
         chart.data = lineData
         chart.description.isEnabled = false
+
+        val markerView = CustomMarkerView(this, R.layout.custom_marker_view)
+        lineChart.marker = markerView
+
         chart.invalidate() // Refresh the chart
 
         return true
+    }
+
+    // Custom marker view class
+    private class CustomMarkerView(context: Context, layoutResource: Int) : MarkerView(context, layoutResource) {
+        private val tvContent: TextView = findViewById(R.id.tvContent)
+        val data = CsvData(0f, 0f, emptyList())
+        private val dateTimeFormatter = DateTimeFormatter.ofPattern(data.dateTimeCsvFormat)
+
+        override fun refreshContent(e: Entry, highlight: Highlight?) {
+            tvContent.text =
+                String.format(Locale.getDefault(), "DT: %s\n%s: %.2f",
+                    dateTimeFormatter.format(LocalDateTime.ofEpochSecond(e.x.toLong() / 1000, 0, ZoneOffset.UTC)),
+                    "Val",
+                    e.y
+                ) // Customize the content displayed in the tooltip
+            super.refreshContent(e, highlight)
+        }
     }
 }
 
