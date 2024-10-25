@@ -274,11 +274,6 @@ class MainActivity : ComponentActivity() {
         return result
     }
 
-    // Convert LocalDateTime to epoch milliseconds
-    private fun LocalDateTime.toEpochMillis(): Long {
-        return this.atZone(ZoneOffset.systemDefault()).toInstant().toEpochMilli()
-    }
-
     val chooseValue: (Boolean, Float, Float) -> Float = { condition, trueValue, falseValue ->
         if (condition) trueValue else falseValue
     }
@@ -315,9 +310,7 @@ class MainActivity : ComponentActivity() {
 
             override fun getFormattedValue(value: Float): String {
                 // Convert float (epoch millis) back to LocalDateTime and format it
-                val millis = value.toLong()
-                val dateTime = LocalDateTime.ofEpochSecond(millis / 1000, 0, ZoneOffset.UTC)
-                return dateTimeFormatter.format(dateTime)
+                return dateTimeFormatter.format(getDateTime(value))
             }
         }
         val desiredLabelsCount = 48
@@ -353,12 +346,21 @@ class MainActivity : ComponentActivity() {
         override fun refreshContent(e: Entry, highlight: Highlight?) {
             tvContent.text =
                 String.format(Locale.getDefault(), "DT: %s\nVal: %.1f",
-                    dateTimeFormatter.format(LocalDateTime.ofEpochSecond(e.x.toLong() / 1000, 0, ZoneOffset.UTC)),
+                    dateTimeFormatter.format(getDateTime(e.x)),
                     e.y
                 ) // Customize the content displayed in the tooltip
             super.refreshContent(e, highlight)
         }
     }
+}
+
+private fun getDateTime(millis: Float) : LocalDateTime{
+    return LocalDateTime.ofEpochSecond(millis.toLong() / 1000, 0, ZoneOffset.UTC)
+}
+
+// Convert LocalDateTime to epoch milliseconds
+private fun LocalDateTime.toEpochMillis(): Long {
+    return this.atZone(ZoneOffset.systemDefault()).toInstant().toEpochMilli()
 }
 
 @Composable
